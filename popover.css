@@ -1,0 +1,11 @@
+.popover-popup {
+  background-color: #FFFFFF;
+  border: 1px solid #CCCCCC;
+  border-radius: 10px;
+  padding: 10px;
+  width: 200px;
+}
+
+#popovers {
+  /*display: none;*/
+}

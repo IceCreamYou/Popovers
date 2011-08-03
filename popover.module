@@ -1,0 +1,141 @@
+<?php
+
+/**
+ * @file
+ *   Adds popovers to user profile pictures.
+ */
+
+/**
+ * Implementation of hook_preprocess_user_picture().
+ */
+function popover_preprocess_user_picture(&$vars) {
+  $path = drupal_get_path('module', 'popover');
+  drupal_add_css($path .'/popover.css');
+  drupal_add_js($path .'/popover.js');
+  $vars['picture'] = '<div class="popover-dest popover-uid-'. $vars['account']->uid .'">'. $vars['picture'] .'</div>';
+  popover_accounts($vars['account']);
+}
+
+/**
+ * Gets and sets the users who need their profile picture themed.
+ */
+function popover_accounts($account = NULL, $reset = FALSE) {
+  static $uids = array();
+  if (!is_null($account)) {
+    if (!isset($uids[$account->uid])) {
+      $uids[$account->uid] = array();
+    }
+    $uids[$account->uid][] = $account;
+  }
+  return $uids;
+}
+
+/**
+ * Implementation of hook_footer().
+ */
+function popover_footer($main = 0) {
+  $output = '<div id="popovers">';
+  $count = 0;
+  foreach (popover_accounts() as $instances) {
+    foreach ($instances as $account) {
+      $output .= theme('popover', $account);
+      $count++;
+    }
+  }
+  if ($count > 0) {
+    return $output .'</div>';
+  }
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function popover_theme($existing, $type, $theme, $path) {
+  return array(
+    'popover' => array(
+      'arguments' => array(
+        'account' => NULL,
+      ),
+    ),
+  );
+}
+
+/**
+ * Themes the popover.
+ */
+function theme_popover($account) {
+  static $callbacks = array();
+  if (empty($callbacks)) {
+    $callbacks = module_invoke_all('popover_callbacks');
+  }
+  $output = '<div class="popover-popup popover-uid-'. $account->uid .'">';
+  foreach ($callbacks as $callback) {
+    $result = '<div class="popover-'. $callback .'">'. $callback($account) .'</div>';
+    if (strip_tags($result)) {
+      $output .= $result;
+    }
+  }
+  return $output .'</div>';
+}
+
+/**
+ * Implementation of hook_popover_callbacks().
+ */
+function popover_popover_callbacks() {
+  $callbacks = array(
+    'popover_username',
+  );
+  if (module_exists('flag')) {
+    $callbacks[] = 'popover_flag';
+  }
+  if (module_exists('user_relationships_api')) {
+    $callbacks[] = 'popover_ur';
+  }
+  return $callbacks;
+}
+
+/**
+ * Turns a user account object into a themed username.
+ */
+function popover_username($account) {
+  return theme('username', $account);
+}
+
+/**
+ * Gets the user flags.
+ */
+function popover_flag($account) {
+  $flags = flag_get_flags('user');
+  $flag_items = array();
+  foreach ($flags as $flag) {
+    if (!$flag->user_access()) {
+      // User has no permission to use this flag.
+      continue;
+    }
+    if (!$flag->applies_to_content_object($account)) {
+      // Flag does not apply to this content.
+      continue;
+    }
+    $flag_items[] = $flag->theme($flag->is_flagged($account->uid) ? 'unflag' : 'flag', $account->uid);
+  }
+  return theme('item_list', $flag_items);
+}
+
+/**
+ * Gets the user relationship actions.
+ */
+function popover_ur($account) {
+  global $user;
+  $viewer =& $GLOBALS['user'];
+  if (($account->uid == $user->uid) && user_access('maintain own relationships')) {
+    return;
+  }
+  $output = '';
+  if ($list = _user_relationships_ui_actions_between($viewer, $account, array('remove' => 1))) {
+    $output .= theme('item_list', $list, NULL, 'ul', array('class' => 'user_relationships_ui'));
+  }
+  if ($actions = _user_relationships_ui_actions_between($viewer, $account, array('add' => 1, 'requested' => 1, 'received' => 1))) {
+    $output .= theme('item_list', $actions, NULL, 'ul', array('class' => 'user_relationships_ui_actions'));
+  }
+  return $output;
+}
